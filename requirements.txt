@@ -1,0 +1,7 @@
+asyncio
+python-dotenv
+streamlit
+pydantic
+openai
+agents
+
