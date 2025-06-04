@@ -4,7 +4,6 @@ import streamlit as st
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
-from agents import Agent, Runner, OpenAIChatCompletionsModel
 
 # Load .env keys
 load_dotenv()
@@ -23,36 +22,40 @@ class TranslationResponse(BaseModel):
     translated_text: str = Field(description="The word-by-word translated text")
     original_text: str = Field(description="The original input text")
 
-# Agent setup for translation
-translation_agent = Agent(
-    name="Multilanguage Translator",
-    instructions="""
-    You are a professional word-by-word translator.
-    
-    Your task is to translate text between languages, focusing on accurate word-by-word translation:
-    
-    1. Translate the input text from the source language to the target language
-    2. Maintain a word-by-word approach rather than contextual/idiomatic translation
-    3. Always provide the translation even if the result might sound unnatural
-        
-    Return the translation in the following fields:
-    - source_language: The language of the input text
-    - target_language: The language the text was translated to
-    - translated_text: The word-by-word translated text
-    - original_text: The original input text
-    
-    If the input is not clear, identify the apparent language and respond professionally.
-    """,
-    model=OpenAIChatCompletionsModel(model="gemini-2.0-flash", openai_client=client),
-    output_type=TranslationResponse
-)
-
-# Async runner with improved error handling
+# Direct translation function without using agents framework
 async def get_translation(text: str, source_lang: str, target_lang: str):
     try:
-        query = f"Translate from {source_lang} to {target_lang}: {text}"
-        result = await Runner.run(translation_agent, query)
-        return result.final_output
+        system_prompt = """
+        You are a professional word-by-word translator.
+        
+        Your task is to translate text between languages, focusing on accurate word-by-word translation:
+        
+        1. Translate the input text from the source language to the target language
+        2. Maintain a word-by-word approach rather than contextual/idiomatic translation
+        3. Always provide the translation even if the result might sound unnatural
+        
+        Return ONLY the translation, without any explanations or additional text.
+        """
+        
+        user_prompt = f"Translate from {source_lang} to {target_lang}: {text}"
+        
+        response = await client.chat.completions.create(
+            model="gemini-2.0-flash",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1
+        )
+        
+        translation = response.choices[0].message.content.strip()
+        
+        return TranslationResponse(
+            source_language=source_lang,
+            target_language=target_lang,
+            translated_text=translation,
+            original_text=text
+        )
     except Exception as e:
         st.error(f"Error during translation: {str(e)}")
         return TranslationResponse(
